@@ -11,7 +11,7 @@ app.use(morgan("dev"));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
-app.use('/users', userRoute);
+app.use('/auth/users', userRoute);
 
 app.get("/", (req, res) => {
     res.send("Hello World!");

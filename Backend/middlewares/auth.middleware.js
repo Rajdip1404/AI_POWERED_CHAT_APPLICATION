@@ -1,27 +1,33 @@
 import jwt from "jsonwebtoken";
-import redisClient from "../services/redis.service.js";
+import User from "../models/user.model.js";
 
-export const authUser = async (req, res, next) => {
-    try{
-        const token = req.cookies.token || req.headers.authorization.split(" ")[1];
+export const authenticateUser = async (req, res, next) => {
+  const authHeader = req.headers.authorization;
 
-        if(!token){
-            return res.status(401).json({message: "Unauthorized User"});
-        }
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    return res.status(401).json({ message: "Unauthorized: No token provided" });
+  } 
 
-        const isBlacklisted = await redisClient.get(token);
-        if(isBlacklisted){
-            res.cookie("token", "");
+  const token = authHeader.split(" ")[1];
 
-            return res.status(401).json({message: "Unauthorized User"});
-        }
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        req.user = decoded;
-        next();
+    // Find user by email instead of findById
+    const user = await User.findOne({ email: decoded.email }).select(
+      "-password"
+    );
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
     }
-    catch(error){
-        // console.log(error);
-        res.status(400).json({message: error.message});
-    }
-}
+
+    req.user = user; // Attach user object to request
+    next();
+    
+  } catch (error) {
+    return res
+      .status(403)
+      .json({ message: "Forbidden: Invalid or expired token" });
+  }
+};
