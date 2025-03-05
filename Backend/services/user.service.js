@@ -13,9 +13,11 @@ const createUser = async (req, res) => {
     }
 
     const hashedPassword = await User.hashPassword(password);
+
     const verificationToken = Math.floor(
       100000 + Math.random() * 900000
     ).toString();
+    
     const user = await User.create({ 
         name, 
         email, 

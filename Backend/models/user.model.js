@@ -51,10 +51,19 @@ userSchema.methods.isValidPassword = async function (password) {
     return await bcrypt.compare(password, this.password);
 };
 
-userSchema.methods.generateJWT = function () {
-    return jwt.sign({ email: this.email }, process.env.JWT_SECRET, {
-        expiresIn: "2d",
+userSchema.methods.generateJWT = function (res) {
+    const token = jwt.sign({ email: this.email }, process.env.JWT_SECRET, {
+        expiresIn: "5d",
     });
+
+    res.cookie("token", token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "strict",
+      maxAge: 5 * 24 * 60 * 60 * 1000, // 5 days
+    });
+
+    return token;
 };
 
 userSchema.methods.generateResetPasswordToken = function () {

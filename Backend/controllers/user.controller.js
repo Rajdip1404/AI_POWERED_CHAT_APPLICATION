@@ -2,7 +2,6 @@ import User from "../models/user.model.js";
 import userService from "../services/user.service.js";
 import { validationResult } from "express-validator";
 import { sendVerificationEmail, sendWelcomeEmail, sendResetPasswordEmail, sendSuccessResetPasswordEmail } from "../services/emails.service.js";
-import jwt from "jsonwebtoken";
 
 export const createUserController = async (req, res) => {
   const errors = validationResult(req);
@@ -15,17 +14,7 @@ export const createUserController = async (req, res) => {
     if (user) {
       await user.save();
 
-      const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, {
-        expiresIn: "7d", // Single long-lived token
-      });
-
-      // Set the token in an HttpOnly cookie
-      res.cookie("token", token, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "strict",
-        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-      });
+      const token = user.generateJWT(res);
 
       await sendVerificationEmail(user.email, user.verificationToken);
 
@@ -64,17 +53,7 @@ export const verifyEmailController = async (req, res) => {
     user.verificationTokenExpiresAt = undefined;
     await user.save();
 
-    const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, {
-      expiresIn: "7d", // Single long-lived token
-    });
-
-    // Set the token in an HttpOnly cookie
-    res.cookie("token", token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "strict",
-      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-    });
+    const token = user.generateJWT(res);
 
     res.status(200).json({
       success: true,
@@ -86,7 +65,6 @@ export const verifyEmailController = async (req, res) => {
       token, // Also returning for client-side storage if needed
     });
 
-    // Send welcome email
     await sendWelcomeEmail(user.email, user.name);
   } 
   catch (error) {
@@ -114,18 +92,10 @@ export const loginUserController = async (req, res) => {
       return res.status(401).json({ message: "Invalid password" });
     }
 
-    const token = await user.generateJWT();
+    const token = await user.generateJWT(res);
 
     user.lastLogin = new Date();
     await user.save();
-
-    // Set the token in an HttpOnly cookie
-    res.cookie("token", token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "strict",
-      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-    });
 
     res.status(200).json({
       success: true,
@@ -235,7 +205,8 @@ export const resetPasswordController = async (req, res) => {
       message: "Password reset successfully"
     });
 
-  }catch(error){
+  }
+  catch(error){
     res.status(400).json({message: error.message});
   }
 };

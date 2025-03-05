@@ -36,7 +36,8 @@ router.post("/login",
         .isLength({ min: 6, max: 50 })
         .withMessage('Password must be at least 6 characters long'),
 
-    loginUserController);
+    loginUserController
+);
 
 router.get("/profile", authenticateUser, profileController);
 
