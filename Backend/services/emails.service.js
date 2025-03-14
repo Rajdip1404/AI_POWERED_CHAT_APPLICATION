@@ -1,4 +1,4 @@
-import { VERIFICATION_EMAIL_TEMPLATE, PASSWORD_RESET_REQUEST_TEMPLATE, PASSWORD_RESET_SUCCESS_TEMPLATE } from "../utils/emailTemplates.js";
+import { VERIFICATION_EMAIL_TEMPLATE, PASSWORD_RESET_REQUEST_TEMPLATE, PASSWORD_RESET_SUCCESS_TEMPLATE, WELCOME_EMAIL_TEMPLATE } from "../utils/emailTemplates.js";
 import { sendEmail } from "../utils/email.config.js";
 export const sendVerificationEmail = async (email, verificationCode) => {
   const recipient = [{ email }];
@@ -20,7 +20,7 @@ export const sendVerificationEmail = async (email, verificationCode) => {
 export const sendWelcomeEmail = async (email, name) => {
   const recipient = [{ email }];
   const subject = `Welcome ${name} to the family!`;
-  const html = `<h1>Welcome ${name} to the family! </h1>`;
+  const html = WELCOME_EMAIL_TEMPLATE.replace("{name}", name);
   const category = "Welcome";
 
   try {
@@ -34,7 +34,7 @@ export const sendWelcomeEmail = async (email, name) => {
 export const sendResetPasswordEmail = async (email, resetLink) => {
   const recipient = [{ email }];
   const subject = "Reset Your Password";
-  const html = PASSWORD_RESET_REQUEST_TEMPLATE.replace("{resetURL}", resetLink);
+  const html = PASSWORD_RESET_REQUEST_TEMPLATE.replace("{resetURL}", resetLink).replace("{currentDate}", new Date().toLocaleDateString());
   const category = "Password Reset";
 
   try {

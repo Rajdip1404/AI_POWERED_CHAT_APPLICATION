@@ -29,6 +29,13 @@ const createUser = async (req, res) => {
     return user;
 }
 
+export const getAllUsers = async ({ userId }) => {
+  const allUsers = await User.find({
+    _id: { $ne: userId },
+  });
+  return allUsers;
+};
 
 
-export default { createUser };
+
+export default { createUser, getAllUsers };

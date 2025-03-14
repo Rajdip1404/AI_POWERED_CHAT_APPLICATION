@@ -1,7 +1,13 @@
 import User from "../models/user.model.js";
 import userService from "../services/user.service.js";
 import { validationResult } from "express-validator";
-import { sendVerificationEmail, sendWelcomeEmail, sendResetPasswordEmail, sendSuccessResetPasswordEmail } from "../services/emails.service.js";
+import {
+  sendVerificationEmail,
+  sendWelcomeEmail,
+  sendResetPasswordEmail,
+  sendSuccessResetPasswordEmail,
+} from "../services/emails.service.js";
+import jwt from "jsonwebtoken";
 
 export const createUserController = async (req, res) => {
   const errors = validationResult(req);
@@ -10,11 +16,16 @@ export const createUserController = async (req, res) => {
   }
 
   try {
+    // 🛑 Delete any existing unverified user with this email before creating a new one
+    await User.deleteOne({
+      email: req.body.email,
+      isVerified: false,
+      verificationTokenExpiresAt: { $lt: Date.now() },
+    });
+
     const user = await userService.createUser(req, res);
     if (user) {
       await user.save();
-
-      const token = user.generateJWT(res);
 
       await sendVerificationEmail(user.email, user.verificationToken);
 
@@ -25,11 +36,11 @@ export const createUserController = async (req, res) => {
           ...user._doc,
           password: undefined,
         },
-        token,
       });
     }
   } catch (error) {
-    if (!res.headersSent) { // prevents multiple responses
+    if (!res.headersSent) {
+      // prevents multiple responses
       return res.status(500).json({ message: error.message });
     }
   }
@@ -66,14 +77,12 @@ export const verifyEmailController = async (req, res) => {
     });
 
     await sendWelcomeEmail(user.email, user.name);
-  } 
-  catch (error) {
+  } catch (error) {
     res.status(500).json({ message: error.message });
   }
 };
 
 export const loginUserController = async (req, res) => {
-   
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
     return res.status(400).json({ errors: errors.array() });
@@ -129,7 +138,6 @@ export const profileController = async (req, res) => {
   }
 };
 
-
 export const logoutController = async (req, res) => {
   try {
     res.clearCookie("token", {
@@ -146,13 +154,13 @@ export const logoutController = async (req, res) => {
 
 export const forgotPasswordController = async (req, res) => {
   const { email } = req.body;
-  try{
-    const user = await User.findOne({email});
+  try {
+    const user = await User.findOne({ email });
 
-    if(!user){
+    if (!user) {
       return res.status(404).json({
         success: false,
-        message: "User not found"
+        message: "User not found",
       });
     }
 
@@ -161,34 +169,36 @@ export const forgotPasswordController = async (req, res) => {
     await user.save();
 
     // Send reset password email
-    await sendResetPasswordEmail(user.email, `${process.env.CLIENT_URL}/reset-password/${resetToken}`);
+    await sendResetPasswordEmail(
+      user.email,
+      `${process.env.CLIENT_URL}/reset-password/${resetToken}`
+    );
 
     res.status(200).json({
       success: true,
       message: "Password reset email sent successfully",
-      token: resetToken
+      token: resetToken,
     });
-  }
-  catch(error){
-    res.status(400).json({message: error.message});
+  } catch (error) {
+    res.status(400).json({ message: error.message });
   }
 };
 
 export const resetPasswordController = async (req, res) => {
   const { resetToken } = req.params;
 
-  try{
+  try {
     const { password } = req.body;
-    
+
     const user = await User.findOne({
       resetPasswordToken: resetToken,
       resetPasswordExpiresAt: { $gt: Date.now() },
     });
 
-    if(!user){
+    if (!user) {
       return res.status(404).json({
         success: false,
-        message: "Invalid or expires Reset token"
+        message: "Invalid or expires Reset token",
       });
     }
 
@@ -202,11 +212,83 @@ export const resetPasswordController = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      message: "Password reset successfully"
+      message: "Password reset successfully",
     });
-
+  } catch (error) {
+    res.status(400).json({ message: error.message });
   }
-  catch(error){
-    res.status(400).json({message: error.message});
+};
+
+export const verifyToken = async (token) => {
+  try {
+    if (!token) {
+      throw new Error("Unauthorized - No token provided");
+    }
+
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    if (!decoded) {
+      throw new Error("Unauthorized - Invalid token");
+    }
+
+    const user = await User.findOne({ email: decoded.email }).select(
+      "-password"
+    );
+    if (!user) {
+      throw new Error("User not found");
+    }
+
+    return user; // ✅ Return user object if valid
+  } catch (error) {
+    throw new Error(error.message || "Unauthorized");
+  }
+};
+
+
+export const checkAuthController = async (req, res) => {
+  try {
+    const token = req.cookies?.token; // ✅ Check if token exists in cookies
+    if (!token) {
+      return res
+        .status(401)
+        .json({ success: false, message: "Unauthorized - No token provided" });
+    }
+
+    const user = await verifyToken(token); // ✅ Use verifyToken function
+    res.status(200).json({ success: true, user });
+  } catch (error) {
+    console.error("Error in checkAuth:", error.message);
+    res.status(401).json({ success: false, message: error.message });
+  }
+};
+
+export const getAllUsersController = async (req, res) => {
+  try {
+    const loggedInUser = await User.findOne({ email: req.user.email });
+    const allUsers = await userService.getAllUsers({ userId: loggedInUser._id });
+    res.json({ message: "All users retrieved successfully", allUsers });
+  } catch (error) {
+    console.log(error);
+    res.status(500).json({ message: error.message });
+  }
+};
+
+export const getUserIdsByEmails = async (req, res) => {
+  try {
+    const { emails } = req.body;
+    if (!emails || !Array.isArray(emails) || emails.length === 0) {
+      return res.status(400).json({ message: "Emails array is required" });
+    }
+
+    // 🔹 Find users in DB
+    const users = await User.find({ email: { $in: emails } }).select("_id");
+
+    if (!users.length) {
+      return res.status(404).json({ message: "No users found" });
+    }
+
+    res.json({ userIds: users.map((user) => user._id) });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Server error" });
   }
 };
